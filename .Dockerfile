@@ -6,7 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 
-COPY --exclude=go.* . .
+COPY . .
 RUN GOOS=linux GOARCH=amd64 go build -o reminder_bot main.go
 
 FROM gcr.io/distroless/base-debian12:nonroot
