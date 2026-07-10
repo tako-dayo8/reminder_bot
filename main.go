@@ -11,11 +11,21 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func openSQL(path string) (*sql.DB, error) {
-	dns := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
+const schema = `
+CREATE TABLE IF NOT EXISTS schedules (
+	id			INTEGER PRIMARY KEY,
+	title		TEXT	NOT NULL,
+	remind_at	INTEGER NOT NULL,
+	done		INTEGER NOT NULL DEFAULT 0,
+	created_at	INTEGER NOT NULL
+) STRICT;
+`
 
-	// func name is "open" but not connection to dns(file path?) check only
-	db, err := sql.Open("sqlite", dns)
+func openSQL(path string) (*sql.DB, error) {
+	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
+
+	// func name is "open" but not connection to dsn(file path?) check only
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
