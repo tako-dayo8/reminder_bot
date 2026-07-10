@@ -1,13 +1,34 @@
 package main
 
 import (
+	"database/sql"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/bwmarrin/discordgo"
+	_ "modernc.org/sqlite"
 )
+
+func openSQL(path string) (*sql.DB, error) {
+	dns := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
+
+	// func name is "open" but not connection to dns(file path?) check only
+	db, err := sql.Open("sqlite", dns)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1) // Avoidance conflict
+
+	// verify a connection for the db
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, err
+	}
+
+	return db, nil
+}
 
 // definition add commands
 var commands = []*discordgo.ApplicationCommand{
