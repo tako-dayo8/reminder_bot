@@ -2,11 +2,13 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
-	"path"
+	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	_ "modernc.org/sqlite"
@@ -17,6 +19,8 @@ CREATE TABLE IF NOT EXISTS schedules (
 	id			INTEGER PRIMARY KEY,
 	title		TEXT	NOT NULL,
 	description TEXT,
+	channel_id  TEXT 	NOT NULL,	-- target channel
+	user_id		TEXT	NOT NULL,	-- target user for example roll, everyone and user
 	remind_at	INTEGER NOT NULL,	-- Unix Seconds
 	interval	INTEGER,			-- NULL = not interval
 	done		INTEGER NOT NULL DEFAULT 0,
@@ -24,6 +28,38 @@ CREATE TABLE IF NOT EXISTS schedules (
 	updated_at	INTEGER NOT NULL
 ) STRICT;
 `
+
+type Schedule struct {
+	id          int64
+	title       string
+	description *string
+	channelID   string
+	userID      string
+	remindAt    int64
+	interval    *int64
+	done        bool
+	createdAt   int64
+	updateAt    int64
+}
+
+type CreateSchedule struct {
+	title       string
+	description *string
+	channelID   string
+	userID      string
+	remindAt    int64
+	interval    *int64
+}
+
+type UpdateSchedule struct {
+	title       *string
+	description *string
+	channelID   *string
+	userID      *string
+	remindAt    *int64
+	interval    *int64
+	done        *bool
+}
 
 func openSQL(path string) (*sql.DB, error) {
 	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
@@ -33,6 +69,7 @@ func openSQL(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer db.Close()
 	db.SetMaxOpenConns(1) // Avoidance conflict
 
 	// verify a connection for the db
@@ -44,9 +81,21 @@ func openSQL(path string) (*sql.DB, error) {
 	return db, nil
 }
 
+// initialize sqlite
 func initSQL(db *sql.DB) error {
 	_, err := db.Exec(schema)
 	return err
+}
+
+func createSchedule(db *sql.DB, schedule CreateSchedule) (int64, error) {
+	now := time.Now().Unix()
+
+	const SQL = "INSERT INTO schedules (title, description, channel_id, user_id ,remind_at, interval, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+	res, err := db.Exec(SQL, schedule.title, schedule.description, schedule.channelID, schedule.userID, schedule.remindAt, schedule.interval, now, now)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
 }
 
 // definition add commands
@@ -104,17 +153,14 @@ func main() {
 		databasePath = "database"
 	}
 
-	_, err := os.Stat(databasePath)
-	if os.IsNotExist(err) {
-		err := os.Mkdir(databasePath, 0755)
-		if err != nil {
-			slog.Error("Failed make a directory database", "error", err)
-			os.Exit(1)
-		}
+	err := os.MkdirAll(databasePath, 0755)
+	if err != nil {
+		slog.Error(fmt.Sprintf("Failed make %s directory", databasePath), "error", err)
+		os.Exit(1)
 	}
 
 	// init sqlite3
-	db, err := openSQL(path.Join(databasePath, "db.sqlite"))
+	db, err := openSQL(filepath.Join(databasePath, "db.sqlite"))
 	if err != nil {
 		slog.Error("Failed open sql", "error", err)
 		os.Exit(1)
