@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path"
 	"syscall"
 
 	"github.com/bwmarrin/discordgo"
@@ -15,9 +16,12 @@ const schema = `
 CREATE TABLE IF NOT EXISTS schedules (
 	id			INTEGER PRIMARY KEY,
 	title		TEXT	NOT NULL,
-	remind_at	INTEGER NOT NULL,
+	description TEXT,
+	remind_at	INTEGER NOT NULL,	-- Unix Seconds
+	interval	INTEGER,			-- NULL = not interval
 	done		INTEGER NOT NULL DEFAULT 0,
-	created_at	INTEGER NOT NULL
+	created_at	INTEGER NOT NULL,
+	updated_at	INTEGER NOT NULL
 ) STRICT;
 `
 
@@ -38,6 +42,11 @@ func openSQL(path string) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+func initSQL(db *sql.DB) error {
+	_, err := db.Exec(schema)
+	return err
 }
 
 // definition add commands
@@ -87,6 +96,34 @@ func main() {
 	if len(guildID) == 0 {
 		slog.Warn("Failed get guildID from env")
 	}
+	// get database path (default: ./database)
+	var databasePath string
+	databasePath = os.Getenv("DB_PATH")
+	if len(databasePath) == 0 {
+		slog.Warn("Failed get databasePath from env")
+		databasePath = "database"
+	}
+
+	_, err := os.Stat(databasePath)
+	if os.IsNotExist(err) {
+		err := os.Mkdir(databasePath, 0755)
+		if err != nil {
+			slog.Error("Failed make a directory database", "error", err)
+			os.Exit(1)
+		}
+	}
+
+	// init sqlite3
+	db, err := openSQL(path.Join(databasePath, "db.sqlite"))
+	if err != nil {
+		slog.Error("Failed open sql", "error", err)
+		os.Exit(1)
+	}
+	if err := initSQL(db); err != nil {
+		slog.Error("Failed init sql", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("Successful init sqlite")
 
 	// init bot client
 	discord, err := discordgo.New("Bot " + token)
@@ -94,7 +131,6 @@ func main() {
 		slog.Error("Failed init discord bot client", "error", err)
 		os.Exit(1)
 	}
-
 	slog.Info("Successful init discord bot client")
 
 	// add handler before connect gateway
