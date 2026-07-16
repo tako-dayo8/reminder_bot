@@ -18,11 +18,16 @@ var commands = []*discordgo.ApplicationCommand{
 		Name:        "ping",
 		Description: "greet reminder bot",
 	},
+	{
+		Name:        "remind",
+		Description: "create new reminder or update reminder",
+	},
 }
 
 // mapping command name -> command handler
 var commandHandlers = map[string]func(session *discordgo.Session, interaction *discordgo.InteractionCreate){
-	"ping": pingHandler,
+	"ping":   pingHandler,
+	"remind": remindHandler,
 }
 
 // ping command handler
@@ -34,6 +39,23 @@ func pingHandler(session *discordgo.Session, interaction *discordgo.InteractionC
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Content: "hello!!!", // message context
+		},
+	})
+	if err != nil {
+		slog.Error("Failed interaction response", "error", err, "GuildID", interaction.GuildID)
+	}
+}
+
+// remind command handler
+// TODO: create remindHandler
+func remindHandler(session *discordgo.Session, interaction *discordgo.InteractionCreate) {
+	slog.Info("Run ping command", "GuildID", interaction.GuildID)
+
+	// response interaction
+	err := session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{
+			Content: "remind!!!", // message context
 		},
 	})
 	if err != nil {
