@@ -80,6 +80,9 @@ func InitSQL(db *sql.DB) error {
 	return err
 }
 
+// create schedule function
+//
+//	if you need know pram,  please look NewSchedule from database.go
 func CreateSchedule(db *sql.DB, schedule NewSchedule) (int64, error) {
 	now := time.Now().Unix()
 
@@ -90,3 +93,5 @@ func CreateSchedule(db *sql.DB, schedule NewSchedule) (int64, error) {
 	}
 	return res.LastInsertId()
 }
+
+// TODO: update schedule function
