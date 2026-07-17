@@ -12,6 +12,8 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+var minValue = 1.0
+
 // definition add commands
 var commands = []*discordgo.ApplicationCommand{
 	{
@@ -20,7 +22,29 @@ var commands = []*discordgo.ApplicationCommand{
 	},
 	{
 		Name:        "remind",
-		Description: "create new reminder or update reminder",
+		Description: "create new remind or update remind",
+		Options: []*discordgo.ApplicationCommandOption{
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "title",
+				Description: "remind title",
+				Required:    false,
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "description",
+				Description: "remind description",
+				Required:    false,
+			},
+			{
+				Type:        discordgo.ApplicationCommandOptionInteger,
+				Name:        "minutes",
+				Description: "remind at minutes",
+				Required:    false,
+				MinValue:    &minValue,
+				MaxValue:    1440,
+			},
+		},
 	},
 }
 
@@ -49,7 +73,7 @@ func pingHandler(session *discordgo.Session, interaction *discordgo.InteractionC
 // remind command handler
 // TODO: create remindHandler
 func remindHandler(session *discordgo.Session, interaction *discordgo.InteractionCreate) {
-	slog.Info("Run ping command", "GuildID", interaction.GuildID)
+	slog.Info("Run remind command", "GuildID", interaction.GuildID)
 
 	// response interaction
 	err := session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
