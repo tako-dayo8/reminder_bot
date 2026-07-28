@@ -14,6 +14,41 @@ import (
 
 var minValue = 1.0
 
+func commandLog(commandName string, interaction *discordgo.InteractionCreate) {
+	var user *discordgo.User
+	if interaction.Member != nil {
+		user = interaction.Member.User
+	} else {
+		user = interaction.User
+	}
+
+	t, err := discordgo.SnowflakeTimestamp(interaction.ID)
+	if err != nil {
+		slog.Warn("Failed get interaction timestamp")
+	}
+
+	var interactionType = map[discordgo.InteractionType]string{
+		1: "InteractionPing",
+		2: "InteractionApplicationCommand",
+		3: "InteractionMessageComponent",
+		4: "InteractionApplicationCommandAutocomplete",
+		5: "InteractionModalSubmit",
+	}
+
+	slog.Info(fmt.Sprintf("Run %s command", commandName),
+		"interactionID", interaction.ID,
+		"type", interactionType[interaction.Type],
+		"timeStamp", t.Local().String(),
+		"commandName", interaction.ApplicationCommandData().Name,
+		"commandOptions", interaction.ApplicationCommandData().Options,
+		"guildID", interaction.GuildID,
+		"channelID", interaction.ChannelID,
+		"userID", user.ID,
+		"userName", user.Username,
+		"appPermissions", interaction.AppPermissions,
+	)
+}
+
 // definition add commands
 var commands = []*discordgo.ApplicationCommand{
 	{
@@ -56,7 +91,7 @@ var commandHandlers = map[string]func(session *discordgo.Session, interaction *d
 
 // ping command handler
 func pingHandler(session *discordgo.Session, interaction *discordgo.InteractionCreate) {
-	slog.Info("Run ping command", "GuildID", interaction.GuildID)
+	commandLog("ping", interaction)
 
 	// response interaction
 	err := session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
@@ -73,7 +108,7 @@ func pingHandler(session *discordgo.Session, interaction *discordgo.InteractionC
 // remind command handler
 // TODO: create remindHandler
 func remindHandler(session *discordgo.Session, interaction *discordgo.InteractionCreate) {
-	slog.Info("Run remind command", "GuildID", interaction.GuildID)
+	commandLog("remind", interaction)
 
 	// response interaction
 	err := session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
@@ -164,7 +199,7 @@ func main() {
 		}
 	}
 
-	slog.Info("Succuss startup. please Ctl+C to End")
+	slog.Info("Succuss startup. please Ctl+C to End", "id", discord.State.User.ID, "username", discord.State.User.Username)
 	// wait
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
