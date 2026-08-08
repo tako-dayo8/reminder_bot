@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-docker build -t test:dev -f ".Dockerfile" .
+docker build -t debug:dev -f "debug.Dockerfile" .
