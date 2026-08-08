@@ -138,6 +138,13 @@ func pingHandler(session *discordgo.Session, interaction *discordgo.InteractionC
 	}
 }
 
+
+// embed color
+const (
+	colorRemind = 0xEF9F27 
+	colorError  = 0xED4245
+)
+
 // remind command handler
 // TODO: create remindHandler
 func remindHandler(session *discordgo.Session, interaction *discordgo.InteractionCreate) {
@@ -158,15 +165,15 @@ func remindHandler(session *discordgo.Session, interaction *discordgo.Interactio
 		// title
 		title := optionMap["title"].StringValue()
 		// hour
-		// hour := optionMap["hour"].IntValue()
+		hour := optionMap["hour"].IntValue()
 		// minutes
-		// minutes := optionMap["minutes"].IntValue()
+		minutes := optionMap["minutes"].IntValue()
 
 		// description
-		description := ""
-		if opt, ok := optionMap["description"]; ok {
-			description = opt.StringValue()
-		}
+		// description := "none"
+		// if opt, ok := optionMap["description"]; ok {
+		// 	description = opt.StringValue()
+		// }
 
 		// repeat
 		// repeat := "none"
@@ -174,21 +181,49 @@ func remindHandler(session *discordgo.Session, interaction *discordgo.Interactio
 		// 	repeat = opt.StringValue()
 		// }
 
+		// Debug
+		slog.Info("check int64 to int", "hour", int(hour), "minutes",int(minutes))
+
+		now := time.Now()
+		unix := time.Date(now.Year(), now.Month(), now.Day(), 15, 0, 0, 0, time.Local)
+
+		// Debug
+		slog.Info("check unix func", "unix.Unix()", unix.Unix())
+
 		//TODO: schedule reminder
 
+		// TODO:bug - mismatch between reminder time and displayed time
 		embed := &discordgo.MessageEmbed{
-			Title:       title,
-			Description: description,
-			Color:       255,
-			Timestamp:   time.Now().Format(time.RFC3339),
+			Author: &discordgo.MessageEmbedAuthor{
+				Name: "🔔 Set a reminder", 
+			},
+			Title: title, 
+			Color: colorRemind,
+			Fields: []*discordgo.MessageEmbedField{
+				{
+					Name:   "remind at",
+					Value:  fmt.Sprintf("<t:%d:f>", unix.Unix()), 
+					Inline: true,
+				},
+				{
+					Name:   "until",
+					Value:  fmt.Sprintf("<t:%d:R>", unix.Unix()), 
+					Inline: true,
+				},
+			},
+			Footer: &discordgo.MessageEmbedFooter{
+				// TODO: get a remind id
+				Text: fmt.Sprintf("ID: %s ・ /remind delete to delete", "a"),
+			},
 		}
-
+	
 		// response interaction
 		err := session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				// Content: fmt.Sprintf("<@%s>", interaction.User.ID), // message context
+				// Content: "🔔 Set a reminder", // message context
 				Embeds: []*discordgo.MessageEmbed{embed},
+				Flags: discordgo.MessageFlagsEphemeral,
 			},
 		})
 
