@@ -8,11 +8,12 @@ import (
 	"path/filepath"
 	"reminder_bot/cmd/database"
 	"syscall"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
 
-var minValue = 1.0
+var minValue = 0.0
 
 func commandLog(commandName string, interaction *discordgo.InteractionCreate) {
 	var user *discordgo.User
@@ -60,24 +61,56 @@ var commands = []*discordgo.ApplicationCommand{
 		Description: "create new remind or update remind",
 		Options: []*discordgo.ApplicationCommandOption{
 			{
-				Type:        discordgo.ApplicationCommandOptionString,
-				Name:        "title",
-				Description: "remind title",
-				Required:    false,
-			},
-			{
-				Type:        discordgo.ApplicationCommandOptionString,
-				Name:        "description",
-				Description: "remind description",
-				Required:    false,
-			},
-			{
-				Type:        discordgo.ApplicationCommandOptionInteger,
-				Name:        "minutes",
-				Description: "remind at minutes",
-				Required:    false,
-				MinValue:    &minValue,
-				MaxValue:    1440,
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
+				Name:        "add",
+				Description: "add remind",
+				Options: []*discordgo.ApplicationCommandOption{
+					{
+						Type:        discordgo.ApplicationCommandOptionString,
+						Name:        "title",
+						Description: "remind title",
+						Required:    true,
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionInteger,
+						Name:        "hour",
+						Description: "remind at hour (0~24)",
+						Required:    true,
+						MinValue:    &minValue,
+						MaxValue:    24,
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionInteger,
+						Name:        "minutes",
+						Description: "remind at minutes (0~60)",
+						Required:    true,
+						MinValue:    &minValue,
+						MaxValue:    60,
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionString,
+						Name:        "description",
+						Description: "remind description",
+						Required:    false,
+					},
+					{
+						Type:        discordgo.ApplicationCommandOptionString,
+						Name:        "repeat",
+						Description: "repeat",
+						Required:    false,
+						Choices: []*discordgo.ApplicationCommandOptionChoice{
+							{
+								Name: "None", Value: "none",
+							},
+							{
+								Name: "EveryDay", Value: "daily",
+							},
+							{
+								Name: "EveryWeek", Value: "weekly",
+							},
+						},
+					},
+				},
 			},
 		},
 	},
@@ -110,13 +143,69 @@ func pingHandler(session *discordgo.Session, interaction *discordgo.InteractionC
 func remindHandler(session *discordgo.Session, interaction *discordgo.InteractionCreate) {
 	commandLog("remind", interaction)
 
-	// response interaction
+	data := interaction.ApplicationCommandData()
+	sub := data.Options[0]
+
+	switch sub.Name {
+	case "add":
+		optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(sub.Options))
+
+		for _, opt := range sub.Options {
+			optionMap[opt.Name] = opt
+		}
+
+		// get options
+		// title
+		title := optionMap["title"].StringValue()
+		// hour
+		// hour := optionMap["hour"].IntValue()
+		// minutes
+		// minutes := optionMap["minutes"].IntValue()
+
+		// description
+		description := ""
+		if opt, ok := optionMap["description"]; ok {
+			description = opt.StringValue()
+		}
+
+		// repeat
+		// repeat := "none"
+		// if opt, ok := optionMap["repeat"]; ok {
+		// 	repeat = opt.StringValue()
+		// }
+
+		//TODO: schedule reminder
+
+		embed := &discordgo.MessageEmbed{
+			Title:       title,
+			Description: description,
+			Color:       255,
+			Timestamp:   time.Now().Format(time.RFC3339),
+		}
+
+		// response interaction
+		err := session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				// Content: fmt.Sprintf("<@%s>", interaction.User.ID), // message context
+				Embeds: []*discordgo.MessageEmbed{embed},
+			},
+		})
+
+		if err != nil {
+			slog.Error("Failed interaction response", "error", err, "GuildID", interaction.GuildID)
+		}
+
+		return
+	}
+
 	err := session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: "remind!!!", // message context
+			Content: "no selected sub command", // message context
 		},
 	})
+
 	if err != nil {
 		slog.Error("Failed interaction response", "error", err, "GuildID", interaction.GuildID)
 	}
