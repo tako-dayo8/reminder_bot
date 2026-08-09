@@ -1,18 +1,21 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"reminder_bot/cmd/database"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
 
+var db *sql.DB
 var minValue = 0.0
 
 func commandLog(commandName string, interaction *discordgo.InteractionCreate) {
@@ -74,7 +77,7 @@ var commands = []*discordgo.ApplicationCommand{
 					{
 						Type:        discordgo.ApplicationCommandOptionInteger,
 						Name:        "hour",
-						Description: "remind at hour (0~24)",
+						Description: "remind hours from now",
 						Required:    true,
 						MinValue:    &minValue,
 						MaxValue:    24,
@@ -82,7 +85,7 @@ var commands = []*discordgo.ApplicationCommand{
 					{
 						Type:        discordgo.ApplicationCommandOptionInteger,
 						Name:        "minutes",
-						Description: "remind at minutes (0~60)",
+						Description: "remind minutes from now",
 						Required:    true,
 						MinValue:    &minValue,
 						MaxValue:    60,
@@ -95,8 +98,8 @@ var commands = []*discordgo.ApplicationCommand{
 					},
 					{
 						Type:        discordgo.ApplicationCommandOptionString,
-						Name:        "repeat",
-						Description: "repeat",
+						Name:        "interval",
+						Description: "interval",
 						Required:    false,
 						Choices: []*discordgo.ApplicationCommandOptionChoice{
 							{
@@ -164,50 +167,86 @@ func remindHandler(session *discordgo.Session, interaction *discordgo.Interactio
 		// get options
 		// title
 		title := optionMap["title"].StringValue()
-		// hour
-		hour := optionMap["hour"].IntValue()
+		// hours
+		hours := optionMap["hour"].IntValue()
 		// minutes
 		minutes := optionMap["minutes"].IntValue()
 
 		// description
-		// description := "none"
-		// if opt, ok := optionMap["description"]; ok {
-		// 	description = opt.StringValue()
-		// }
+		description := ""
+		if opt, ok := optionMap["description"]; ok {
+			description = opt.StringValue()
+		}
 
-		// repeat
-		// repeat := "none"
-		// if opt, ok := optionMap["repeat"]; ok {
-		// 	repeat = opt.StringValue()
+		// interval
+		// interval := "none"
+		// if opt, ok := optionMap["interval"]; ok {
+		// 	interval = opt.StringValue()
 		// }
-
-		// Debug
-		slog.Info("check int64 to int", "hour", int(hour), "minutes",int(minutes))
 
 		now := time.Now()
-		unix := time.Date(now.Year(), now.Month(), now.Day(), 15, 0, 0, 0, time.Local)
+		// add hours and minutes
+		remindTime := now.Add(time.Duration(hours) * time.Hour).Add(time.Duration(minutes) * time.Minute)
 
-		// Debug
-		slog.Info("check unix func", "unix.Unix()", unix.Unix())
+
+		var userID string
+
+		if interaction.User != nil {
+			userID = interaction.User.ID
+		} else if interaction.Member != nil && interaction.Member.User != nil  {
+			userID = interaction.Member.User.ID
+		} else {
+			slog.Error("Failed get to UserID and Member.UserID")
+		}
+
+		slog.Debug("get userID", "userID", userID)
+
+		newSchedule := database.NewSchedule{
+			Title: title,
+			Description: &description,
+			ChannelID: interaction.ChannelID,
+			UserID: userID,
+			RemindAt: remindTime.Unix(),
+		}
+
+		slog.Debug("newSchedule", "value", newSchedule)
 
 		//TODO: schedule reminder
+		insertID, err := database.CreateSchedule(db, newSchedule)
+		if err != nil {
+			slog.Error("Failed create schedule for database" , "error", err)
+			err := session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "❌ Sorry!! Failed create new schedule", 
+				Flags: discordgo.MessageFlagsEphemeral,
+			},
+			})
 
-		// TODO:bug - mismatch between reminder time and displayed time
+			if err != nil {
+				slog.Error("Failed interaction response", "error", err, "GuildID", interaction.GuildID)
+			}
+			return
+		}
+		slog.Debug("Succuss save new schedule for database", "insertID", insertID)
+
+		// create embed
 		embed := &discordgo.MessageEmbed{
 			Author: &discordgo.MessageEmbedAuthor{
 				Name: "🔔 Set a reminder", 
 			},
 			Title: title, 
+			Description: description,
 			Color: colorRemind,
 			Fields: []*discordgo.MessageEmbedField{
 				{
 					Name:   "remind at",
-					Value:  fmt.Sprintf("<t:%d:f>", unix.Unix()), 
+					Value:  fmt.Sprintf("<t:%d:f>", remindTime.Unix()), 
 					Inline: true,
 				},
 				{
 					Name:   "until",
-					Value:  fmt.Sprintf("<t:%d:R>", unix.Unix()), 
+					Value:  fmt.Sprintf("<t:%d:R>", remindTime.Unix()), 
 					Inline: true,
 				},
 			},
@@ -218,16 +257,14 @@ func remindHandler(session *discordgo.Session, interaction *discordgo.Interactio
 		}
 	
 		// response interaction
-		err := session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
+		if err := session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
 				// Content: "🔔 Set a reminder", // message context
 				Embeds: []*discordgo.MessageEmbed{embed},
 				Flags: discordgo.MessageFlagsEphemeral,
 			},
-		})
-
-		if err != nil {
+		}); err != nil {
 			slog.Error("Failed interaction response", "error", err, "GuildID", interaction.GuildID)
 		}
 
@@ -247,9 +284,18 @@ func remindHandler(session *discordgo.Session, interaction *discordgo.Interactio
 }
 
 func main() {
+	var logLevel slog.Leveler
+	debugFlag := os.Getenv("DEBUG_MODE")
+	
+	if strings.ToUpper(debugFlag) == "TRUE" || strings.ToUpper(debugFlag) == "YES" {
+		logLevel = slog.LevelDebug
+	} else {
+		logLevel = slog.LevelInfo
+	}
+
 	// setup logger
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: logLevel,
 	}))
 	slog.SetDefault(logger)
 
@@ -289,6 +335,12 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("Successful init sqlite")
+	var name string
+	if err := db.QueryRow(
+		`SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'schedules'`,
+	).Scan(&name); err != nil {
+		slog.Debug("check schema" , "sqlite_schema", name)
+	}
 
 	// init bot client
 	discord, err := discordgo.New("Bot " + token)
