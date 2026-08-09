@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS schedules (
 	channel_id  TEXT 	NOT NULL,	-- target channel
 	user_id		TEXT	NOT NULL,	-- target user for example roll, everyone and user
 	remind_at	INTEGER NOT NULL,	-- Unix Seconds
-	interval	INTEGER,			-- NULL = not interval
+	-- interval	INTEGER,			-- NULL = not interval
 	done		INTEGER NOT NULL DEFAULT FALSE,
 	created_at	INTEGER NOT NULL,
 	updated_at	INTEGER NOT NULL
@@ -29,19 +29,19 @@ type Schedule struct {
 	channelID   string
 	userID      string
 	remindAt    int64
-	interval    *int64
+	// interval    *int64
 	done        bool
 	createdAt   int64
 	updateAt    int64
 }
 
 type NewSchedule struct {
-	title       string
-	description *string
-	channelID   string
-	userID      string
-	remindAt    int64
-	interval    *int64
+	Title       string
+	Description *string
+	ChannelID   string
+	UserID      string
+	RemindAt    int64
+	// interval    *int64
 }
 
 type UpdateSchedule struct {
@@ -50,7 +50,7 @@ type UpdateSchedule struct {
 	channelID   *string
 	userID      *string
 	remindAt    *int64
-	interval    *int64
+	// interval    *int64
 	done        *bool
 }
 
@@ -86,8 +86,11 @@ func InitSQL(db *sql.DB) error {
 func CreateSchedule(db *sql.DB, schedule NewSchedule) (int64, error) {
 	now := time.Now().Unix()
 
-	const SQL = "INSERT INTO schedules (title, description, channel_id, user_id ,remind_at, interval, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-	res, err := db.Exec(SQL, schedule.title, schedule.description, schedule.channelID, schedule.userID, schedule.remindAt, schedule.interval, now, now)
+	// const SQL = "INSERT INTO schedules (title, description, channel_id, user_id ,remind_at, interval, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+	// res, err := db.Exec(SQL, schedule.title, schedule.description, schedule.channelID, schedule.userID, schedule.remindAt, schedule.interval, now, now)
+	const SQL = "INSERT INTO schedules (title, description, channel_id, user_id ,remind_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+	res, err := db.Exec(SQL, schedule.Title, schedule.Description, schedule.ChannelID, schedule.UserID, schedule.RemindAt, now, now)
+	// res, err := db.Exec(SQL, "a", "a", "aaaaa", "aaaaa", 45454864, now, now)
 	if err != nil {
 		return 0, err
 	}
