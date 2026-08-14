@@ -325,7 +325,7 @@ func main() {
 	}
 
 	// init sqlite3
-	db, err := database.OpenSQL(filepath.Join(databasePath, "db.sqlite"))
+	db, err = database.OpenSQL(filepath.Join(databasePath, "db.sqlite"))
 	if err != nil {
 		slog.Error("Failed open sql", "error", err)
 		os.Exit(1)
