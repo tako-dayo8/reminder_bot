@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log/slog"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"reminder_bot/cmd/database"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -96,23 +98,23 @@ var commands = []*discordgo.ApplicationCommand{
 						Description: "remind description",
 						Required:    false,
 					},
-					{
-						Type:        discordgo.ApplicationCommandOptionString,
-						Name:        "interval",
-						Description: "interval",
-						Required:    false,
-						Choices: []*discordgo.ApplicationCommandOptionChoice{
-							{
-								Name: "None", Value: "none",
-							},
-							{
-								Name: "EveryDay", Value: "daily",
-							},
-							{
-								Name: "EveryWeek", Value: "weekly",
-							},
-						},
-					},
+					// {
+					// 	Type:        discordgo.ApplicationCommandOptionString,
+					// 	Name:        "interval",
+					// 	Description: "interval",
+					// 	Required:    false,
+					// 	Choices: []*discordgo.ApplicationCommandOptionChoice{
+					// 		{
+					// 			Name: "None", Value: "none",
+					// 		},
+					// 		{
+					// 			Name: "EveryDay", Value: "daily",
+					// 		},
+					// 		{
+					// 			Name: "EveryWeek", Value: "weekly",
+					// 		},
+					// 	},
+					// },
 				},
 			},
 		},
@@ -149,7 +151,6 @@ const (
 )
 
 // remind command handler
-// TODO: create remindHandler
 func remindHandler(session *discordgo.Session, interaction *discordgo.InteractionCreate) {
 	commandLog("remind", interaction)
 
@@ -283,6 +284,107 @@ func remindHandler(session *discordgo.Session, interaction *discordgo.Interactio
 	}
 }
 
+func runScheduler(ctx context.Context, s *discordgo.Session) {
+	slog.Debug("check runScheduler start")
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <- ctx.Done():
+			slog.Info("scheduler stopped.")
+			return
+		case <- ticker.C:
+			// slog.Debug("check select case.")
+			if err := tick(ctx, s); err != nil {
+				slog.Error("tick failed", "err", err)
+			}
+		}
+	}
+}
+
+type due struct {
+	id int64
+	channelID string
+	title string
+	description sql.NullString
+}
+
+func tick(ctx context.Context, s *discordgo.Session) error {
+	now := time.Now().Unix()
+
+	const sql = `
+	SELECT id, channel_id, title, description
+	FROM schedules
+	WHERE done = 0 AND remind_at <= ?
+	ORDER BY remind_at
+	LIMIT 50
+	`
+
+	rows, err := db.QueryContext(ctx, sql, now)
+	if err != nil {
+		return fmt.Errorf("query due schedules: %w", err)
+	}
+
+	var list []due
+	for rows.Next() {
+		var d due
+		if err := rows.Scan(&d.id, &d.channelID, &d.title, &d.description ); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan: %w", err)
+		}
+		slog.Debug("check", "d", d)
+		list = append(list, d)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("rows: %w", err)
+	}
+
+	var wg sync.WaitGroup
+	for _, d := range list {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := notify(s, d); err != nil {
+				slog.Error("notify failed", "id", d.id, "err", err)
+				return 
+			}
+			if err := markDone(d.id); err != nil {
+				slog.Error("mark done failed", "id", d.id, "err", err)
+			}
+		}()
+	}
+	wg.Wait() 
+
+	return nil
+}
+
+
+func notify(s *discordgo.Session, d due)  error {
+	_, err := s.ChannelMessageSend(d.channelID, fmt.Sprintf("🔔 This Remind Time!! %s %s", d.title, d.description.String))
+	if err != nil {
+		return  err
+	}
+
+	return nil
+}
+
+func markDone(id int64) error {
+	const sql = `
+	UPDATE schedules SET done = TRUE
+	WHERE id = ?
+	`
+	_, err := db.Exec(sql, id)
+	if err != nil {
+		return  nil
+	}
+
+	return  nil
+}
+
+
 func main() {
 	var logLevel slog.Leveler
 	debugFlag := os.Getenv("DEBUG_MODE")
@@ -368,9 +470,21 @@ func main() {
 		}
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
+	schedulerDone := make(chan struct{})
+	go func() {
+		defer close(schedulerDone)
+		runScheduler(ctx, discord)
+	}()
+
+
 	slog.Info("Succuss startup. please Ctl+C to End", "id", discord.State.User.ID, "username", discord.State.User.Username)
 	// wait
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
+
+	cancel()
+	<- schedulerDone
 }
