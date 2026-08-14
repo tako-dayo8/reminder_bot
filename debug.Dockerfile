@@ -7,4 +7,4 @@ RUN go mod download
 
 
 COPY ./cmd ./cmd
-CMD [ "go", "run", "./cmd/main.go" ]
+CMD [ "bash" ]
