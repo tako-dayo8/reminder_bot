@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"log/slog"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -77,6 +78,11 @@ func OpenSQL(path string) (*sql.DB, error) {
 // initialize sqlite
 func InitSQL(db *sql.DB) error {
 	_, err := db.Exec(schema)
+
+	var tableName string
+	db.QueryRow(`SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'schedules'`).Scan(&tableName)
+	slog.Info("schema applied successfully.", "table", tableName)
+
 	return err
 }
 
