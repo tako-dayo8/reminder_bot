@@ -334,13 +334,6 @@ func main() {
 		slog.Error("Failed init sql", "error", err)
 		os.Exit(1)
 	}
-	slog.Info("Successful init sqlite")
-	var name string
-	if err := db.QueryRow(
-		`SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'schedules'`,
-	).Scan(&name); err != nil {
-		slog.Debug("check schema" , "sqlite_schema", name)
-	}
 
 	// init bot client
 	discord, err := discordgo.New("Bot " + token)
