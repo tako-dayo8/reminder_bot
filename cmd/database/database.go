@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS schedules (
 	created_at	INTEGER NOT NULL,
 	updated_at	INTEGER NOT NULL
 ) STRICT;
+CREATE INDEX IF NOT EXISTS idx_schedules_pending ON schedules(remind_at) WHERE done = 0; -- create index
 `
 
 type Schedule struct {
@@ -104,3 +105,18 @@ func CreateSchedule(db *sql.DB, schedule NewSchedule) (int64, error) {
 }
 
 // TODO: update schedule function
+
+
+// Mark done for reminded schedule
+func MarkDone(db *sql.DB, id int64) error {
+	const SQL = `
+	UPDATE schedules SET done = TRUE
+	WHERE id = ?
+	`
+	_, err := db.Exec(SQL, id)
+	if err != nil {
+		return  err
+	}
+
+	return  nil
+}
