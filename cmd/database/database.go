@@ -78,13 +78,17 @@ func OpenSQL(path string) (*sql.DB, error) {
 
 // initialize sqlite
 func InitSQL(db *sql.DB) error {
-	_, err := db.Exec(schema)
+	if _, err := db.Exec(schema); err != nil {
+		return err
+	}
 
 	var tableName string
-	db.QueryRow(`SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'schedules'`).Scan(&tableName)
+	if err := db.QueryRow(`SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'schedules'`).Scan(&tableName); err != nil {
+		return err
+	}
 	slog.Info("schema applied successfully.", "table", tableName)
 
-	return err
+	return nil
 }
 
 // create schedule function
