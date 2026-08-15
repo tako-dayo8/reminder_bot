@@ -1,1 +1,7 @@
 .env*
+!.env.sample
+
+temp
+
+database
+!cmd/database
