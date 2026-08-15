@@ -353,17 +353,18 @@ func tick(ctx context.Context, s *discordgo.Session) error {
 
 	var wg sync.WaitGroup
 	for _, d := range list {
+		d := d
 		wg.Add(1)
-		go func() {
+		go func(d due) {
 			defer wg.Done()
 			if err := notify(s, d); err != nil {
 				slog.Error("notify failed", "id", d.id, "err", err)
-				return 
+				return
 			}
-			if err := database.MarkDone(db,d.id); err != nil {
+			if err := database.MarkDone(db, d.id); err != nil {
 				slog.Error("mark done failed", "id", d.id, "err", err)
 			}
-		}()
+		}(d)
 	}
 	wg.Wait() 
 
