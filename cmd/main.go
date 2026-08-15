@@ -195,10 +195,18 @@ func remindHandler(session *discordgo.Session, interaction *discordgo.Interactio
 
 		if interaction.User != nil {
 			userID = interaction.User.ID
-		} else if interaction.Member != nil && interaction.Member.User != nil  {
+		} else if interaction.Member != nil && interaction.Member.User != nil {
 			userID = interaction.Member.User.ID
 		} else {
-			slog.Error("Failed get to UserID and Member.UserID")
+			slog.Error("Failed to resolve user ID from interaction")
+			_ = session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "❌ Unable to determine the requesting user.",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+			return
 		}
 
 		slog.Debug("get userID", "userID", userID)
