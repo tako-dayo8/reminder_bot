@@ -148,6 +148,7 @@ func pingHandler(session *discordgo.Session, interaction *discordgo.InteractionC
 const (
 	colorRemind = 0xEF9F27 
 	colorError  = 0xED4245
+	colorFire   = 0x5865F2
 )
 
 // remind command handler
@@ -308,7 +309,7 @@ type due struct {
 	channelID string
 	userID string
 	title string
-	description string
+	description sql.NullString
 }
 
 func tick(ctx context.Context, s *discordgo.Session) error {
@@ -363,14 +364,24 @@ func tick(ctx context.Context, s *discordgo.Session) error {
 
 
 func notify(s *discordgo.Session, d due)  error {
-	_, err := s.ChannelMessageSend(d.channelID, fmt.Sprintf("<@%s>\n🔔 This Remind Time!! %s %s", d.userID ,d.title, d.description))
-	if err != nil {
-		return  err
+	embed := &discordgo.MessageEmbed{
+		Author: &discordgo.MessageEmbedAuthor{
+			Name: "🔔 Reminder",
+		},
+		Title:     d.title,
+		Color:     colorFire,
+		Timestamp: time.Now().Format(time.RFC3339),
+		Footer: &discordgo.MessageEmbedFooter{
+			Text: fmt.Sprintf("ID: %d", d.id),
+		},
 	}
 
-	return nil
+	_, err := s.ChannelMessageSendComplex(d.channelID, &discordgo.MessageSend{
+		Content: fmt.Sprintf("<@%s>", d.userID),
+		Embeds:  []*discordgo.MessageEmbed{embed},
+	})
+	return err
 }
-
 
 
 func main() {
@@ -474,6 +485,6 @@ func main() {
 	<-stop
 
 	cancel()
-	db.Close()
 	<- schedulerDone
+	db.Close()
 }
