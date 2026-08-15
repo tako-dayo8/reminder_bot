@@ -82,7 +82,7 @@ var commands = []*discordgo.ApplicationCommand{
 						Description: "remind hours from now",
 						Required:    true,
 						MinValue:    &minValue,
-						MaxValue:    24,
+						MaxValue:    23,
 					},
 					{
 						Type:        discordgo.ApplicationCommandOptionInteger,
@@ -90,7 +90,7 @@ var commands = []*discordgo.ApplicationCommand{
 						Description: "remind minutes from now",
 						Required:    true,
 						MinValue:    &minValue,
-						MaxValue:    60,
+						MaxValue:    59,
 					},
 					{
 						Type:        discordgo.ApplicationCommandOptionString,
@@ -252,8 +252,7 @@ func remindHandler(session *discordgo.Session, interaction *discordgo.Interactio
 				},
 			},
 			Footer: &discordgo.MessageEmbedFooter{
-				// TODO: get a remind id
-				Text: fmt.Sprintf("ID: %s ・ /remind delete to delete", "a"),
+				Text: fmt.Sprintf("ID: %d ・ /remind delete to delete", insertID),
 			},
 		}
 	
@@ -307,22 +306,23 @@ func runScheduler(ctx context.Context, s *discordgo.Session) {
 type due struct {
 	id int64
 	channelID string
+	userID string
 	title string
-	description sql.NullString
+	description string
 }
 
 func tick(ctx context.Context, s *discordgo.Session) error {
 	now := time.Now().Unix()
 
-	const sql = `
-	SELECT id, channel_id, title, description
+	const SQL = `
+	SELECT id, channel_id, user_id, title, description
 	FROM schedules
 	WHERE done = 0 AND remind_at <= ?
 	ORDER BY remind_at
 	LIMIT 50
 	`
 
-	rows, err := db.QueryContext(ctx, sql, now)
+	rows, err := db.QueryContext(ctx, SQL, now)
 	if err != nil {
 		return fmt.Errorf("query due schedules: %w", err)
 	}
@@ -330,7 +330,7 @@ func tick(ctx context.Context, s *discordgo.Session) error {
 	var list []due
 	for rows.Next() {
 		var d due
-		if err := rows.Scan(&d.id, &d.channelID, &d.title, &d.description ); err != nil {
+		if err := rows.Scan(&d.id, &d.channelID, &d.userID ,&d.title, &d.description ); err != nil {
 			rows.Close()
 			return fmt.Errorf("scan: %w", err)
 		}
@@ -351,7 +351,7 @@ func tick(ctx context.Context, s *discordgo.Session) error {
 				slog.Error("notify failed", "id", d.id, "err", err)
 				return 
 			}
-			if err := markDone(d.id); err != nil {
+			if err := database.MarkDone(db,d.id); err != nil {
 				slog.Error("mark done failed", "id", d.id, "err", err)
 			}
 		}()
@@ -363,7 +363,7 @@ func tick(ctx context.Context, s *discordgo.Session) error {
 
 
 func notify(s *discordgo.Session, d due)  error {
-	_, err := s.ChannelMessageSend(d.channelID, fmt.Sprintf("🔔 This Remind Time!! %s %s", d.title, d.description.String))
+	_, err := s.ChannelMessageSend(d.channelID, fmt.Sprintf("<@%s>\n🔔 This Remind Time!! %s %s", d.userID ,d.title, d.description))
 	if err != nil {
 		return  err
 	}
@@ -371,18 +371,6 @@ func notify(s *discordgo.Session, d due)  error {
 	return nil
 }
 
-func markDone(id int64) error {
-	const sql = `
-	UPDATE schedules SET done = TRUE
-	WHERE id = ?
-	`
-	_, err := db.Exec(sql, id)
-	if err != nil {
-		return  nil
-	}
-
-	return  nil
-}
 
 
 func main() {
@@ -486,5 +474,6 @@ func main() {
 	<-stop
 
 	cancel()
+	db.Close()
 	<- schedulerDone
 }
