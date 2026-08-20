@@ -61,6 +61,4 @@ jobs:
         
       - name: deploy
         run: |
-          ssh -i ~/.ssh/deploy_key -p ${{ secrets.DEPLOY_SSH_PORT }} \
-            ${{ secrets.DEPLOY_USER_NAME }}@${{ secrets.DEPLOY_HOST_IP }} \
-              '${{ github.sha }}'
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER_NAME }}@${{ secrets.DEPLOY_HOST_IP }} '${{ github.sha }}'
