@@ -62,13 +62,13 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER_NAME }}@${{ secrets.DEPLOY_HOST_IP }} '${{ github.sha }}'
     
-create-tag:
-  concurrency:
-    group: create-release-tag
-    cancel-in-progress: false
-  if: ${{ github.event_name != 'workflow_dispatch'}}
-  needs: deploy
-  runs-on: ubuntu-latest
+  create-tag:
+    concurrency:
+      group: create-release-tag
+      cancel-in-progress: false
+    if: ${{ github.event_name != 'workflow_dispatch'}}
+    needs: deploy
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     outputs:
