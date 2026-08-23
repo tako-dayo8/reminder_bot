@@ -1,9 +1,10 @@
 name: docker build test
 
 on: 
+  workflow_call:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, develop]
 
 permissions:
   contents: read
@@ -19,5 +20,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: build docker
-        run: docker build -t test:latest -f ".Dockerfile" .
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: .Dockerfile
+          tags: test:latest
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
