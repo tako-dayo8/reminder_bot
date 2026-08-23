@@ -61,3 +61,82 @@ jobs:
       - name: deploy
         run: |
           ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER_NAME }}@${{ secrets.DEPLOY_HOST_IP }} '${{ github.sha }}'
+    
+create-tag:
+  concurrency:
+    group: create-release-tag
+    cancel-in-progress: false
+  if: ${{ github.event_name != 'workflow_dispatch'}}
+  needs: deploy
+  runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.create_tag.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with: 
+          ref: "main"
+
+      - name: Get update type from pull_request title
+        id: update_type
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          case "$PR_TITLE" in
+            *"BREAKING CHANGE"*|major:*|*!:*) type="major" ;;
+            feat:*|feat\(*)                   type="minor" ;;
+            *)                                type="patch" ;;
+          esac
+          echo "PR title: $PR_TITLE -> $type"
+          echo "type=$type" >> "$GITHUB_OUTPUT"
+
+      - name: Create Tag
+        id: create_tag
+        env:
+          UPDATE_TYPE: ${{ steps.update_type.outputs.type }}
+        run: |
+          git fetch --unshallow --tags --force
+
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $latest_tag"
+
+          version="${latest_tag#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            version="0.0.0"
+          fi
+
+          IFS='.' read -r major minor patch <<< "$version"
+          case "$UPDATE_TYPE" in
+            major) next_tag="v$((major + 1)).0.0" ;;
+            minor) next_tag="v${major}.$((minor + 1)).0" ;;
+            *)     next_tag="v${major}.${minor}.$((patch + 1))" ;;
+          esac
+          echo "Next tag: $next_tag"
+
+          git tag "$next_tag" main
+          git push origin "$next_tag"
+
+          echo "tag=$next_tag" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: create-tag
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.create-tag.outputs.tag }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.create-tag.outputs.tag }}
+
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ env.TAG }}
+          name: Release ${{ env.TAG }}
+          body: ${{ github.event.pull_request.body }}
+          token: ${{ secrets.GITHUB_TOKEN }}
