@@ -94,7 +94,7 @@ jobs:
         env:
           UPDATE_TYPE: ${{ steps.update_type.outputs.type }}
         run: |
-          git fetch --tags --force
+          git fetch --unshallow --tags --force
 
           latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           echo "Latest tag: $latest_tag"
