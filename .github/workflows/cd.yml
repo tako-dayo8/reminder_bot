@@ -16,9 +16,8 @@ concurrency:
 
 jobs:
   build-test:
-    # if: ${{ github.event.pull_request.merged == true }} 
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true }}
     uses: ./.github/workflows/docker-build-test.yml
-
   build-and-push:
     needs: build-test
     runs-on: ubuntu-latest
