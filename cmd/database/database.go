@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -106,6 +107,45 @@ func CreateSchedule(db *sql.DB, schedule NewSchedule) (int64, error) {
 		return 0, err
 	}
 	return res.LastInsertId()
+}
+
+type ShowSchedule struct {
+	ID int64
+	ChannelID string
+	UserID string
+	Title string
+	Description sql.NullString
+	RemindAt int64
+}
+
+func ListSchedules(db *sql.DB, userID string) ([]ShowSchedule, error) {
+	const SQL = `
+	SELECT id, channel_id, user_id, title, description, remind_at
+	FROM schedules
+	WHERE done = 0 AND user_id = ?
+	ORDER BY remind_at
+	LIMIT 50
+	`
+
+	rows, err := db.Query(SQL, userID)
+	if err != nil {
+		return nil, fmt.Errorf("query due schedules: %w", err)
+	}
+
+	var list []ShowSchedule
+	for rows.Next() {
+		var d ShowSchedule
+		if err := rows.Scan(&d.ID, &d.ChannelID, &d.UserID ,&d.Title, &d.Description, &d.RemindAt); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+		list = append(list, d)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows: %w", err)
+	}
+	return list, nil
 }
 
 // TODO: update schedule function
