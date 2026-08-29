@@ -55,6 +55,17 @@ func commandLog(commandName string, interaction *discordgo.InteractionCreate) {
 	)
 }
 
+// get UserID from interaction
+func getUserID(interaction *discordgo.InteractionCreate) (string, error) {
+	if interaction.User != nil {
+		return interaction.User.ID , nil
+	} else if interaction.Member != nil && interaction.Member.User != nil {
+		return  interaction.Member.User.ID, nil
+	} 
+
+	return  "", fmt.Errorf("failed get user ID")
+}
+
 // definition add commands
 var commands = []*discordgo.ApplicationCommand{
 	{
@@ -117,6 +128,11 @@ var commands = []*discordgo.ApplicationCommand{
 					// },
 				},
 			},
+			{
+				Type:        discordgo.ApplicationCommandOptionSubCommand,
+				Name:        "list",
+				Description: "List your active reminders.",
+			},
 		},
 	},
 }
@@ -158,6 +174,8 @@ func remindHandler(session *discordgo.Session, interaction *discordgo.Interactio
 	data := interaction.ApplicationCommandData()
 	sub := data.Options[0]
 
+	// slog.Debug("sub.Name" , "name", sub.Name)
+
 	switch sub.Name {
 	case "add":
 		optionMap := make(map[string]*discordgo.ApplicationCommandInteractionDataOption, len(sub.Options))
@@ -191,13 +209,9 @@ func remindHandler(session *discordgo.Session, interaction *discordgo.Interactio
 		remindTime := now.Add(time.Duration(hours) * time.Hour).Add(time.Duration(minutes) * time.Minute)
 
 
-		var userID string
+		userID, err := getUserID(interaction)
 
-		if interaction.User != nil {
-			userID = interaction.User.ID
-		} else if interaction.Member != nil && interaction.Member.User != nil {
-			userID = interaction.Member.User.ID
-		} else {
+		if err != nil {
 			slog.Error("Failed to resolve user ID from interaction")
 			_ = session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -209,7 +223,7 @@ func remindHandler(session *discordgo.Session, interaction *discordgo.Interactio
 			return
 		}
 
-		slog.Debug("get userID", "userID", userID)
+		// slog.Debug("get userID", "userID", userID)
 
 		newSchedule := database.NewSchedule{
 			Title: title,
@@ -219,9 +233,8 @@ func remindHandler(session *discordgo.Session, interaction *discordgo.Interactio
 			RemindAt: remindTime.Unix(),
 		}
 
-		slog.Debug("newSchedule", "value", newSchedule)
+		// slog.Debug("newSchedule", "value", newSchedule)
 
-		//TODO: schedule reminder
 		insertID, err := database.CreateSchedule(db, newSchedule)
 		if err != nil {
 			slog.Error("Failed create schedule for database" , "error", err)
@@ -238,7 +251,7 @@ func remindHandler(session *discordgo.Session, interaction *discordgo.Interactio
 			}
 			return
 		}
-		slog.Debug("Succuss save new schedule for database", "insertID", insertID)
+		// slog.Debug("Succuss save new schedule for database", "insertID", insertID)
 
 		// create embed
 		embed := &discordgo.MessageEmbed{
@@ -278,18 +291,92 @@ func remindHandler(session *discordgo.Session, interaction *discordgo.Interactio
 		}
 
 		return
+	case "list":
+		slog.Debug("active list")
+
+		userID, err := getUserID(interaction)
+
+		if err != nil {
+			slog.Error("Failed to resolve user ID from interaction")
+			_ = session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "❌ Unable to determine the requesting user.",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+			return
+		}
+
+		schedules, err := database.ListSchedules(db, userID)
+		if err != nil {
+			slog.Error("Failed to get Schedules.", "error", err)
+			_ = session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Content: "❌ Failed to get Schedules.",
+					Flags:   discordgo.MessageFlagsEphemeral,
+				},
+			})
+			return
+		}
+
+		// slog.Debug("schedule length", "len", len(schedules))
+
+
+
+		var embeds []*discordgo.MessageEmbed
+		if len(schedules) == 0 {
+			embeds = append(embeds, &discordgo.MessageEmbed{
+					Title:     "Not set a Reminder",
+					Color:     colorFire,
+				})
+		} else {
+			var fields []*discordgo.MessageEmbedField 
+			for i, s := range schedules {
+				fields = append(fields, &discordgo.MessageEmbedField{	
+					Name: fmt.Sprintf("%d : %s %s", i + 1 ,s.Title, s.Description.String),
+					Value: fmt.Sprintf("<t:%d:f>", s.RemindAt),
+					Inline: false,
+				})
+			}
+			embeds = append(embeds, &discordgo.MessageEmbed{
+				Author: &discordgo.MessageEmbedAuthor{
+					Name: "🔔 Reminder",
+				},
+				Color:     colorFire,
+				Fields: fields,
+				Timestamp: time.Now().Format(time.RFC3339),
+			})
+		}
+
+		// response interaction
+		if err := session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "🔔 List a Reminder", // message context
+				Embeds: embeds,
+				Flags: discordgo.MessageFlagsEphemeral,
+			},
+		}); err != nil {
+			slog.Error("Failed interaction response", "error", err, "GuildID", interaction.GuildID)
+		}
+
+		return
+	default:
+		err := session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "no selected sub command", // message context
+			},
+		})
+	
+		if err != nil {
+			slog.Error("Failed interaction response", "error", err, "GuildID", interaction.GuildID)
+		}
 	}
 
-	err := session.InteractionRespond(interaction.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{
-			Content: "no selected sub command", // message context
-		},
-	})
 
-	if err != nil {
-		slog.Error("Failed interaction response", "error", err, "GuildID", interaction.GuildID)
-	}
 }
 
 func runScheduler(ctx context.Context, s *discordgo.Session) {
